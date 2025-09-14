@@ -9,6 +9,7 @@ GIT_TAG=$(git describe --tags --exact-match 2>/dev/null)
 if [ -z "$GIT_TAG" ]; then
     GIT_TAG=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 fi
+echo "Building version: $GIT_TAG"
 
 rm -rf $BUILD_DIR
 mkdir -p $BUILD_DIR/artifacts
