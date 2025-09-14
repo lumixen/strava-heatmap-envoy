@@ -8,8 +8,10 @@
             "mode": "auto",
             "program": "${fileDirname}",
             "env": {
-                // "LOG_DEBUG": "true",
+                "LOG_DEBUG": "true",
                 "PORT": "8080"
+                // "CERT_PEM": "${workspaceFolder}/cert.pem",
+                // "KEY_PEM": "${workspaceFolder}/key.pem"
             }
         }
     ]

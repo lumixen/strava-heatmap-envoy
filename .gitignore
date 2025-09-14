@@ -1,0 +1,8 @@
+.vscode/
+build/
+docker/
+
+key.pem
+cert.pem
+strava-heatmap-envoy
+docker-release.sh
