@@ -107,6 +107,8 @@ func getCookies() {
 
 // tileProxyHandler handles incoming tile requests.
 func tileProxyHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	targetURL := "https://content-a.strava.com/identified/globalheat" + r.URL.Path
 
 	req, err := http.NewRequest("GET", targetURL, nil)
@@ -148,7 +150,6 @@ func tileProxyHandler(w http.ResponseWriter, r *http.Request) {
 	contentType := resp.Header.Get("Content-Type")
 	if resp.StatusCode == http.StatusOK && strings.HasPrefix(contentType, "image/") {
 		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.WriteHeader(http.StatusOK)
 		io.Copy(w, resp.Body)
 		if debugEnabled {
@@ -174,38 +175,84 @@ func main() {
 		}
 	}()
 
-	port := os.Getenv("PORT")
-	log.Printf("Using port: %s", port)
-	if port == "" {
-		port = "8080"
+	httpPort := os.Getenv("HTTP_PORT")
+	if httpPort == "" {
+		httpPort = "8080"
+	}
+	httpsPort := os.Getenv("HTTPS_PORT")
+	if httpsPort == "" {
+		httpsPort = "8443"
 	}
 
-	server := &http.Server{
-		Addr:    ":" + port,
-		Handler: http.HandlerFunc(tileProxyHandler),
+	handler := http.HandlerFunc(tileProxyHandler)
+
+	// --- Configure and start HTTP Server ---
+	httpServer := &http.Server{
+		Addr:    ":" + httpPort,
+		Handler: handler,
 	}
 
-	// Graceful shutdown
 	go func() {
-		log.Printf("Server starting on port %s", port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("ListenAndServe error: %v", err)
+		log.Printf("HTTP server starting on port %s", httpPort)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP ListenAndServe error: %v", err)
 		}
 	}()
 
-	// Wait for interrupt signal to gracefully shut down the server
+	// --- Conditionally configure and start HTTPS Server ---
+	var httpsServer *http.Server
+	certFilePath := os.Getenv("CERT_PEM")
+	keyFilePath := os.Getenv("KEY_PEM")
+
+	if certFilePath != "" && keyFilePath != "" {
+		httpsServer = &http.Server{
+			Addr:    ":" + httpsPort,
+			Handler: handler,
+		}
+
+		go func() {
+			log.Printf("HTTPS server starting on port %s", httpsPort)
+			log.Printf("Using certificate file: %s", certFilePath)
+			log.Printf("Using key file: %s", keyFilePath)
+			if err := httpsServer.ListenAndServeTLS(certFilePath, keyFilePath); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("HTTPS ListenAndServeTLS error: %v", err)
+			}
+		}()
+	} else {
+		log.Println("HTTPS not started. Set CERT_PEM and KEY_PEM environment variables to enable HTTPS.")
+	}
+
+	log.Println("http://hostname:" + httpPort + "/all/blue/{z}/{x}/{y}.png")
+	log.Println("https://hostname:" + httpsPort + "/all/blue/{z}/{x}/{y}.png")
+
+	// Wait for interrupt signal to gracefully shut down the servers
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("Shutting down server...")
+	log.Println("Shutting down servers...")
 
-	// The context is used to inform the server it has 5 seconds to finish
-	// the requests it is currently handling
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Server Shutdown Failed: %v", err)
+
+	var wg sync.WaitGroup
+	// Add HTTP server to wait group
+
+	wg.Go(func() {
+		if err := httpServer.Shutdown(ctx); err != nil {
+			log.Printf("HTTP Server Shutdown Failed: %v", err)
+		}
+	})
+
+	if httpsServer != nil {
+		// Add HTTPS server to wait group if it exists
+		wg.Go(func() {
+			if err := httpsServer.Shutdown(ctx); err != nil {
+				log.Printf("HTTPS Server Shutdown Failed: %v", err)
+			}
+		})
 	}
+
+	wg.Wait()
 
 	// Close idle connections in our persistent clients
 	clientsLock.Lock()
