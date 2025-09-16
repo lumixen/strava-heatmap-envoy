@@ -46,8 +46,7 @@ Pre-compiled binaries for Linux, Windows, and macOS are created by the build scr
 
     *   **Linux / macOS:**
         ```sh
-        export STRAVA_SESSION_COOKIE="<your_strava_session_cookie>"
-        ./strava-heatmap-envoy
+        STRAVA_SESSION_COOKIE="<your_strava_session_cookie>" ./strava-heatmap-envoy
         ```
 
     *   **Windows (Command Prompt):**
