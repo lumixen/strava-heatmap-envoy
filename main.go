@@ -79,10 +79,16 @@ func getCookies() {
 		return
 	}
 
+	stravaSessionCookie := os.Getenv("STRAVA_SESSION_COOKIE")
+	if stravaSessionCookie == "" {
+		stravaSessionCookie = "eier68hdchci83gf4kb0pre1inqnqvdt"
+		log.Println("STRAVA_SESSION_COOKIE environment variable not set, using default fallback.")
+	}
+
 	// Add the initial session cookie needed for authentication
 	req.AddCookie(&http.Cookie{
 		Name:  "_strava4_session",
-		Value: "eier68hdchci83gf4kb0pre1inqnqvdt", // This might need to be updated if it expires
+		Value: stravaSessionCookie,
 	})
 
 	client := getHttpClient("www.strava.com")
@@ -222,8 +228,8 @@ func main() {
 		log.Println("HTTPS not started. Set CERT_PEM and KEY_PEM environment variables to enable HTTPS.")
 	}
 
-	log.Println("http://hostname:" + httpPort + "/all/blue/{z}/{x}/{y}.png")
-	log.Println("https://hostname:" + httpsPort + "/all/blue/{z}/{x}/{y}.png")
+	log.Println("http://localhost:" + httpPort + "/all/blue/{z}/{x}/{y}.png")
+	log.Println("https://localhost:" + httpsPort + "/all/blue/{z}/{x}/{y}.png")
 
 	// Wait for interrupt signal to gracefully shut down the servers
 	quit := make(chan os.Signal, 1)
