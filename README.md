@@ -114,7 +114,6 @@ The application is configured using environment variables:
 | `CERT_PEM`              | Path to the SSL certificate file (`.pem` or `.crt`). Enables HTTPS if set along with `KEY_PEM`.           |         | No       |
 | `KEY_PEM`               | Path to the SSL private key file (`.pem` or `.key`). Enables HTTPS if set along with `CERT_PEM`.          |         | No       |
 | `LOG_DEBUG`             | Set to `1` or `true` to enable verbose logging of served tiles.                                         | `false` | No       |
- |
 
 ## Building from Source
 
