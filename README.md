@@ -1,6 +1,6 @@
 # Strava Heatmap Envoy
 
-A simple, lightweight Go proxy server that provides access to Strava's global heatmap tiles. It handles the authentication and cookie refresh process, allowing you to integrate Strava's heatmap into your mapping applications.
+A simple, lightweight Go proxy server that provides stable access to Strava's global heatmap tiles. It automatically handles the cookie refresh process, and adds the required relaxed CORS headers, making it easy to integrate the heatmap into any web or desktop mapping application.
 
 ## Overview
 
