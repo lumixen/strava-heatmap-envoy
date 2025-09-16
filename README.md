@@ -1,13 +1,12 @@
-````markdown
 # Strava Heatmap Envoy
 
-A simple, lightweight proxy server that provides access to Strava's global heatmap tiles. It handles the authentication and cookie refresh process, allowing you to integrate Strava's heatmap into your mapping applications.
+A simple, lightweight Go proxy server that provides access to Strava's global heatmap tiles. It handles the authentication and cookie refresh process, allowing you to integrate Strava's heatmap into your mapping applications.
 
 ## Overview
 
-This application runs as a server that fetches heatmap tiles from Strava on your behalf. It manages the required authentication cookies and automatically refreshes them when they expire. It serves tiles over standard HTTP and can be configured to use HTTPS.
+This application runs as a server that fetches heatmap tiles from Strava on your behalf. It manages the required cookies and automatically refreshes them when they expire. It serves tiles over standard HTTP and can be configured to server tiles over HTTPS.
 
-The primary goal is to provide a stable tile endpoint, like `http://localhost:8080/all/blue/{z}/{x}/{y}.png`, which can be used in map clients like Leaflet, OpenLayers, or GIS software (JOSM).
+The primary goal is to provide a stable tile endpoint, like `http://localhost:8080/all/blue/{z}/{x}/{y}.png`, which can be used in map clients like Leaflet, OpenLayers, [gpx.studio](https://gpx.studio/app) or GIS software like [JOSM](https://wiki.openstreetmap.org/wiki/JOSM).
 
 ## Usage
 
@@ -17,7 +16,7 @@ There are two primary ways to run this application: using Docker or running a pr
 
 **Steps:**
 
-1.  **Get your Strava Session Cookie (Recommended):**
+1.  **Get your personal Strava Session Cookie (Recommended):**
     *   Log in to the [Strava website](https://www.strava.com).
     *   Open your browser's developer tools (usually by pressing F12).
     *   Go to the "Application" (or "Storage") tab, find the cookies for `www.strava.com`, and copy the value of the `_strava4_session` cookie.
@@ -64,6 +63,45 @@ Once running, you can access the heatmap tiles at the following URL:
 `http://localhost:8080/{activity}/{color}/{z}/{x}/{y}.png`
 
 Example: `http://localhost:8080/all/blue/10/512/341.png`
+
+### A Note on HTTPS and Mixed Content
+
+If you are using these map tiles on a website that is served over `https://`, you must also serve the tiles either from the localhost or over `https://`. Modern web browsers block "mixed content" from remote hosts - that is, loading `http://` resources on an `https://` page - for security reasons.
+
+This proxy can serve tiles over HTTPS if you provide an SSL certificate and a private key.
+
+**Enabling HTTPS:**
+
+1.  **Generate a self-signed certificate:**
+    Run the following command to create a certificate valid for e.g. `192.168.1.100`.
+    ```sh
+    openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=192.168.1.100"
+    ```
+    This will create `cert.pem` and `key.pem` in your current directory.
+
+2.  **Run the application with HTTPS enabled:**
+    Set the `CERT_PEM` and `KEY_PEM` environment variables to the paths of the files you just created.
+
+    *   **Docker:**
+        ```sh
+        docker run -d \
+          -p 8080:8080 \
+          -p 8443:8443 \
+          -v $(pwd)/cert.pem:/config/cert.pem \
+          -v $(pwd)/key.pem:/config/key.pem \
+          -e CERT_PEM="/config/cert.pem" \
+          -e KEY_PEM="/config/key.pem" \
+          -e STRAVA_SESSION_COOKIE="<your_strava_session_cookie>" \
+          --name strava-proxy \
+          ghcr.io/lumixen/strava-heatmap-envoy:latest
+        ```
+
+    *   **Local Binary (Linux/macOS):**
+        ```sh
+        CERT_PEM="cert.pem" KEY_PEM="key.pem" ./strava-heatmap-envoy
+        ```
+
+Your tile URL will now be available over HTTPS, for example: `https://192.168.1.100:8443/all/blue/10/512/341.png`. You should accept the risks, obviously.
 
 ## Configuration
 
