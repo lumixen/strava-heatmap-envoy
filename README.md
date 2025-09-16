@@ -34,11 +34,11 @@ There are two primary ways to run this application: using Docker or running a pr
 
 ### 2. Local Binaries
 
-Pre-compiled binaries for Linux, Windows, and macOS are created by the build script in the `build/artifacts/` directory.
+Pre-compiled binaries for Linux, Windows, and macOS can be found in [releases](https://github.com/lumixen/strava-heatmap-envoy/releases).
 
 **Steps:**
 
-1.  **Download the appropriate binary** for your operating system and architecture from the project's releases.
+1.  **Download the appropriate binary** for your operating system and architecture.
 
 2.  **Get your Strava Session Cookie** as described in the Docker instructions.
 
