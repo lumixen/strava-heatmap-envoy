@@ -3,21 +3,29 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
+	"golang.org/x/image/draw"
 	"golang.org/x/net/http2"
 )
 
 var debugEnabled bool
+var scalingEnabled bool
 
 // Global state for cookies, protected by a mutex
 var (
@@ -31,6 +39,17 @@ var (
 	httpClients = make(map[string]*http.Client)
 	clientsLock sync.Mutex
 )
+
+var tilePathRegex = regexp.MustCompile(`/([^/]+)/([^/]+)/(\d+)/(\d+)/(\d+)\.png`)
+
+var tileCache *expirable.LRU[string, image.Image]
+var notFoundCache *expirable.LRU[string, bool]
+
+func init() {
+	tileCache = expirable.NewLRU[string, image.Image](150, nil, 1*time.Hour)
+	// Cache for paths that are known to not exist.
+	notFoundCache = expirable.NewLRU[string, bool](40000, nil, 1*time.Hour)
+}
 
 // getHttpClient returns a persistent HTTP client for a given host.
 // It creates a new client if one doesn't exist for the host.
@@ -57,6 +76,26 @@ func getHttpClient(host string) *http.Client {
 	log.Printf("Created new persistent HTTP/2 client for %s", host)
 	httpClients[host] = client
 	return client
+}
+
+// parseTilePath extracts zoom, x, and y from a URL path.
+func parseTilePath(path string) (sport, color string, z, x, y int, ok bool) {
+	matches := tilePathRegex.FindStringSubmatch(path)
+	if len(matches) != 6 {
+		return "", "", 0, 0, 0, false
+	}
+
+	sport = matches[1]
+	color = matches[2]
+	z, errZ := strconv.Atoi(matches[3])
+	x, errX := strconv.Atoi(matches[4])
+	y, errY := strconv.Atoi(matches[5])
+
+	if errZ != nil || errX != nil || errY != nil {
+		return "", "", 0, 0, 0, false
+	}
+
+	return sport, color, z, x, y, true
 }
 
 // getCookies fetches authentication cookies from Strava.
@@ -149,7 +188,135 @@ func tileProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		http.NotFound(w, r)
+		if !scalingEnabled {
+			http.NotFound(w, r)
+			return
+		}
+
+		sport, color, requestedZ, requestedX, requestedY, ok := parseTilePath(r.URL.Path)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+
+		var parentImg image.Image
+		var foundZ int
+
+		// Iteratively search for an available parent tile, going up zoom levels
+		for z := requestedZ - 1; z >= 0; z-- {
+			x := requestedX / (1 << (requestedZ - z))
+			y := requestedY / (1 << (requestedZ - z))
+
+			parentPath := fmt.Sprintf("/%s/%s/%d/%d/%d.png", sport, color, z, x, y)
+
+			// Check not-found cache first
+			if _, found := notFoundCache.Get(parentPath); found {
+				if debugEnabled {
+					log.Printf("Skipping known not-found tile: %s", parentPath)
+				}
+				continue // Skip this path, we know it doesn't exist
+			}
+
+			// Check cache first
+			if cachedImg, found := tileCache.Get(parentPath); found {
+				if debugEnabled {
+					log.Printf("Found cached ancestor tile at %s", parentPath)
+				}
+				parentImg = cachedImg
+				foundZ = z
+				break // Found in cache, exit loop
+			}
+
+			parentTargetURL := "https://content-a.strava.com/identified/globalheat" + parentPath
+			if debugEnabled {
+				log.Printf("Attempting to find parent tile at zoom %d: %s", z, parentPath)
+			}
+
+			parentReq, _ := http.NewRequest("GET", parentTargetURL, nil)
+			cookiesLock.RLock()
+			for _, cookie := range cookies {
+				parentReq.AddCookie(cookie)
+			}
+			cookiesLock.RUnlock()
+
+			parentResp, err := client.Do(parentReq)
+			if err != nil {
+				log.Printf("Error fetching parent tile %s: %v", parentPath, err)
+				continue // Try the next level up
+			}
+
+			if parentResp.StatusCode == http.StatusNotFound {
+				// Add to the not-found cache and continue to the next zoom level
+				notFoundCache.Add(parentPath, true)
+				parentResp.Body.Close()
+				continue
+			}
+
+			if parentResp.StatusCode == http.StatusOK {
+				img, err := png.Decode(parentResp.Body)
+				parentResp.Body.Close()
+				if err != nil {
+					log.Printf("Error decoding parent tile %s: %v", parentPath, err)
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+				parentImg = img
+				foundZ = z
+
+				// Add the newly fetched tile to the cache
+				tileCache.Add(parentPath, img)
+
+				if debugEnabled {
+					log.Printf("Found available ancestor tile at %s", parentPath)
+				}
+				break // Found a valid tile, exit loop
+			}
+			parentResp.Body.Close()
+		}
+
+		if parentImg == nil {
+			log.Printf("No ancestor tile found for %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+
+		// We have the ancestor tile (parentImg at foundZ), now we need to scale it up.
+		// This is more efficient than scaling one zoom level at a time.
+		deltaZ := requestedZ - foundZ
+		scaleFactor := 1 << deltaZ
+
+		// Calculate the coordinates of the requested tile within the ancestor tile's grid.
+		innerX := requestedX % scaleFactor
+		innerY := requestedY % scaleFactor
+
+		// Calculate the size of the sub-tile area in the parent image.
+		subTileSize := 512 / scaleFactor
+
+		// Define the source rectangle in the parent image.
+		srcRect := image.Rect(
+			innerX*subTileSize,
+			innerY*subTileSize,
+			(innerX+1)*subTileSize,
+			(innerY+1)*subTileSize,
+		)
+
+		srcQuadrant := parentImg.(interface {
+			SubImage(r image.Rectangle) image.Image
+		}).SubImage(srcRect)
+
+		// The destination is a new 512x512 tile.
+		newTile := image.NewRGBA(image.Rect(0, 0, 512, 512))
+		// Scale the source rectangle directly to the full size of the new tile.
+		draw.CatmullRom.Scale(newTile, newTile.Bounds(), srcQuadrant, srcQuadrant.Bounds(), draw.Over, nil)
+
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		if err := png.Encode(w, newTile); err != nil {
+			log.Printf("Error encoding scaled tile: %v", err)
+		}
+		if debugEnabled {
+			log.Printf("Served scaled tile for: %s from ancestor at zoom %d", targetURL, foundZ)
+		}
 		return
 	}
 
@@ -170,6 +337,9 @@ func tileProxyHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	debugEnv := os.Getenv("LOG_DEBUG")
 	debugEnabled = debugEnv == "1" || strings.ToLower(debugEnv) == "true"
+
+	scalingEnv := os.Getenv("ENABLE_SCALING")
+	scalingEnabled = scalingEnv == "1" || strings.ToLower(scalingEnv) == "true"
 	// Fetch cookies on startup
 	getCookies()
 

@@ -102,6 +102,14 @@ This proxy can serve tiles over HTTPS if you provide an SSL certificate and a pr
 
 Your tile URL will now be available over HTTPS, for example: `https://192.168.1.100:8443/all/blue/10/512/341.png`. You should accept the risks, obviously.
 
+## Upscaling Missing Tiles (Experimental)
+
+This proxy includes an experimental feature to generate tiles for zoom levels that are not natively available from Strava. For example, if you request a tile at zoom level 19 and the highest available tile is at zoom level 15, the proxy will fetch the level 15 tile and upscale it to generate the requested tile.
+
+This is useful for viewing the heatmap at high zoom levels where Strava does not provide data in apps that don't have a good native upscaling mechanism.
+
+To enable this feature, set the `ENABLE_SCALING` environment variable to `1` or `true`.
+
 ## Configuration
 
 The application is configured using environment variables:
@@ -114,6 +122,7 @@ The application is configured using environment variables:
 | `CERT_PEM`              | Path to the SSL certificate file (`.pem` or `.crt`). Enables HTTPS if set along with `KEY_PEM`.           |         | No       |
 | `KEY_PEM`               | Path to the SSL private key file (`.pem` or `.key`). Enables HTTPS if set along with `CERT_PEM`.          |         | No       |
 | `LOG_DEBUG`             | Set to `1` or `true` to enable verbose logging of served tiles.                                         | `false` | No       |
+| `ENABLE_SCALING`        | Set to `1` or `true` to enable upscaling of missing tiles from lower zoom levels.                       | `false` | No       |
 
 ## Building from Source
 
