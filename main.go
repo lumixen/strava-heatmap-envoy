@@ -312,7 +312,9 @@ func tileProxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.WriteHeader(http.StatusOK)
 		if err := png.Encode(w, newTile); err != nil {
-			log.Printf("Error encoding scaled tile: %v", err)
+			if debugEnabled {
+				log.Printf("Error encoding scaled tile: %v", err)
+			}
 		}
 		if debugEnabled {
 			log.Printf("Served scaled tile for: %s from ancestor at zoom %d", targetURL, foundZ)
