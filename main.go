@@ -25,6 +25,7 @@ import (
 )
 
 var debugEnabled bool
+var scalingEnabled bool
 
 // Global state for cookies, protected by a mutex
 var (
@@ -38,6 +39,8 @@ var (
 	httpClients = make(map[string]*http.Client)
 	clientsLock sync.Mutex
 )
+
+var tilePathRegex = regexp.MustCompile(`/([^/]+)/([^/]+)/(\d+)/(\d+)/(\d+)\.png`)
 
 var tileCache *expirable.LRU[string, image.Image]
 var notFoundCache *expirable.LRU[string, bool]
@@ -75,24 +78,24 @@ func getHttpClient(host string) *http.Client {
 	return client
 }
 
-var tilePathRegex = regexp.MustCompile(`/all/blue/(\d+)/(\d+)/(\d+)\.png`)
-
 // parseTilePath extracts zoom, x, and y from a URL path.
-func parseTilePath(path string) (z, x, y int, ok bool) {
+func parseTilePath(path string) (sport, color string, z, x, y int, ok bool) {
 	matches := tilePathRegex.FindStringSubmatch(path)
-	if len(matches) != 4 {
-		return 0, 0, 0, false
+	if len(matches) != 6 {
+		return "", "", 0, 0, 0, false
 	}
 
-	z, errZ := strconv.Atoi(matches[1])
-	x, errX := strconv.Atoi(matches[2])
-	y, errY := strconv.Atoi(matches[3])
+	sport = matches[1]
+	color = matches[2]
+	z, errZ := strconv.Atoi(matches[3])
+	x, errX := strconv.Atoi(matches[4])
+	y, errY := strconv.Atoi(matches[5])
 
 	if errZ != nil || errX != nil || errY != nil {
-		return 0, 0, 0, false
+		return "", "", 0, 0, 0, false
 	}
 
-	return z, x, y, true
+	return sport, color, z, x, y, true
 }
 
 // getCookies fetches authentication cookies from Strava.
@@ -185,7 +188,12 @@ func tileProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		requestedZ, requestedX, requestedY, ok := parseTilePath(r.URL.Path)
+		if !scalingEnabled {
+			http.NotFound(w, r)
+			return
+		}
+
+		sport, color, requestedZ, requestedX, requestedY, ok := parseTilePath(r.URL.Path)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -199,7 +207,7 @@ func tileProxyHandler(w http.ResponseWriter, r *http.Request) {
 			x := requestedX / (1 << (requestedZ - z))
 			y := requestedY / (1 << (requestedZ - z))
 
-			parentPath := fmt.Sprintf("/all/blue/%d/%d/%d.png", z, x, y)
+			parentPath := fmt.Sprintf("/%s/%s/%d/%d/%d.png", sport, color, z, x, y)
 
 			// Check not-found cache first
 			if _, found := notFoundCache.Get(parentPath); found {
@@ -299,7 +307,7 @@ func tileProxyHandler(w http.ResponseWriter, r *http.Request) {
 		// The destination is a new 512x512 tile.
 		newTile := image.NewRGBA(image.Rect(0, 0, 512, 512))
 		// Scale the source rectangle directly to the full size of the new tile.
-		draw.BiLinear.Scale(newTile, newTile.Bounds(), srcQuadrant, srcQuadrant.Bounds(), draw.Over, nil)
+		draw.CatmullRom.Scale(newTile, newTile.Bounds(), srcQuadrant, srcQuadrant.Bounds(), draw.Over, nil)
 
 		w.Header().Set("Content-Type", "image/png")
 		w.WriteHeader(http.StatusOK)
@@ -329,6 +337,9 @@ func tileProxyHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	debugEnv := os.Getenv("LOG_DEBUG")
 	debugEnabled = debugEnv == "1" || strings.ToLower(debugEnv) == "true"
+
+	scalingEnv := os.Getenv("ENABLE_SCALING")
+	scalingEnabled = scalingEnv == "1" || strings.ToLower(scalingEnv) == "true"
 	// Fetch cookies on startup
 	getCookies()
 
