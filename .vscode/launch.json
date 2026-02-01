@@ -9,7 +9,8 @@
             "program": "${fileDirname}",
             "env": {
                 "LOG_DEBUG": "true",
-                "PORT": "8080"
+                "PORT": "8080",
+                "ENABLE_SCALING": "true"
                 // "CERT_PEM": "${workspaceFolder}/cert.pem",
                 // "KEY_PEM": "${workspaceFolder}/key.pem"
             }

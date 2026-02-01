@@ -145,6 +145,20 @@ func getCookies() {
 
 	cookiesLock.Lock()
 	cookies = resp.Cookies()
+	// Filter out cookies with empty values
+	filteredCookies := make([]*http.Cookie, 0, len(cookies))
+	for _, cookie := range cookies {
+		if cookie.Value != "" {
+			filteredCookies = append(filteredCookies, cookie)
+		}
+	}
+	cookies = filteredCookies
+	if debugEnabled {
+		log.Printf("Fetched %d cookies from Strava", len(cookies))
+		for i, cookie := range cookies {
+			log.Printf("Cookie %d: %s=%s", i+1, cookie.Name, cookie.Value)
+		}
+	}
 	cookiesLock.Unlock()
 
 	log.Println("Cookies read successfully.")
