@@ -145,6 +145,20 @@ func getCookies() {
 
 	cookiesLock.Lock()
 	cookies = resp.Cookies()
+	// Filter out cookies with empty values
+	filteredCookies := make([]*http.Cookie, 0, len(cookies))
+	for _, cookie := range cookies {
+		if cookie.Value != "" {
+			filteredCookies = append(filteredCookies, cookie)
+		}
+	}
+	cookies = filteredCookies
+	if debugEnabled {
+		log.Printf("Fetched %d cookies from Strava", len(cookies))
+		for i, cookie := range cookies {
+			log.Printf("Cookie %d: %s=%s", i+1, cookie.Name, cookie.Value)
+		}
+	}
 	cookiesLock.Unlock()
 
 	log.Println("Cookies read successfully.")
@@ -312,7 +326,9 @@ func tileProxyHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.WriteHeader(http.StatusOK)
 		if err := png.Encode(w, newTile); err != nil {
-			log.Printf("Error encoding scaled tile: %v", err)
+			if debugEnabled {
+				log.Printf("Error encoding scaled tile: %v", err)
+			}
 		}
 		if debugEnabled {
 			log.Printf("Served scaled tile for: %s from ancestor at zoom %d", targetURL, foundZ)
