@@ -356,6 +356,9 @@ func main() {
 
 	scalingEnv := os.Getenv("ENABLE_SCALING")
 	scalingEnabled = scalingEnv == "1" || strings.ToLower(scalingEnv) == "true"
+
+	disableHTTP2Env := os.Getenv("DISABLE_HTTP2")
+	disableHTTP2 := disableHTTP2Env == "1" || strings.ToLower(disableHTTP2Env) == "true"
 	// Fetch cookies on startup
 	getCookies()
 
@@ -400,6 +403,12 @@ func main() {
 		httpsServer = &http.Server{
 			Addr:    ":" + httpsPort,
 			Handler: handler,
+		}
+		if disableHTTP2 {
+			// A non-nil TLSNextProto map without an "h2" handler disables
+			// net/http's automatic HTTP/2 support for this TLS server.
+			httpsServer.TLSNextProto = map[string]func(*http.Server, *tls.Conn, http.Handler){}
+			log.Println("HTTP/2 disabled for incoming HTTPS connections; clients will use HTTP/1.1.")
 		}
 
 		go func() {
