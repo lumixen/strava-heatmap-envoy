@@ -119,9 +119,10 @@ The application is configured using environment variables:
 | `STRAVA_SESSION_COOKIE` | Your `_strava4_session` cookie value from strava.com. If not set, a hardcoded fallback is used.           |         | No       |
 | `HTTP_PORT`             | The port for the HTTP server.                                                                           | `8080`  | No       |
 | `HTTPS_PORT`            | The port for the HTTPS server.                                                                          | `8443`  | No       |
+| `DISABLE_HTTP2`         | Set to `1` or `true` to force HTTP/1.1 on incoming HTTPS connections. Outbound Strava requests still use HTTP/2. | `false` | No       |
 | `CERT_PEM`              | Path to the SSL certificate file (`.pem` or `.crt`). Enables HTTPS if set along with `KEY_PEM`.           |         | No       |
 | `KEY_PEM`               | Path to the SSL private key file (`.pem` or `.key`). Enables HTTPS if set along with `CERT_PEM`.          |         | No       |
-| `LOG_DEBUG`             | Set to `1` or `true` to enable verbose logging of served tiles.                                         | `false` | No       |
+| `LOG_DEBUG`             | Set to `1` or `true` to enable verbose logging of served tiles. Cookie values are not logged.           | `false` | No       |
 | `ENABLE_SCALING`        | Set to `1` or `true` to enable upscaling of missing tiles from lower zoom levels.                       | `false` | No       |
 
 ## Building from Source
