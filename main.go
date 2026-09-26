@@ -155,6 +155,9 @@ func getCookies() {
 	cookies = filteredCookies
 	if debugEnabled {
 		log.Printf("Fetched %d cookies from Strava", len(cookies))
+		for i, cookie := range cookies {
+			log.Printf("Cookie %d: %s=%s", i+1, cookie.Name, cookie.Value)
+		}
 	}
 	cookiesLock.Unlock()
 
