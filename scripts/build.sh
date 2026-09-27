@@ -37,14 +37,15 @@ for PLATFORM in "${PLATFORMS[@]}"; do
         echo "✅ Built: $OUTPUT"
     fi
 
-    if [ "$OS" != "darwin" ]; then
+    if [ "$OS" != "darwin" ] && command -v upx >/dev/null 2>&1; then
         echo "Compressing binary with UPX..."
-        upx --best "$OUTPUT"
-        if [ $? -ne 0 ]; then
-            echo "❌ UPX compression failed for $OUTPUT"
-        else
+        if upx --best "$OUTPUT"; then
             echo "Compressed: $OUTPUT"
+        else
+            echo "❌ UPX compression failed for $OUTPUT"
         fi
+    elif [ "$OS" != "darwin" ]; then
+        echo "⏩ Skipping UPX (not installed) for $OS/$ARCH"
     else
         echo "⏩ Skipping UPX for $OS/$ARCH"
     fi
